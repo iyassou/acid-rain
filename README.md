@@ -505,6 +505,8 @@ class AcidRain:
 
 The `simulate` function simulates our experiment (currently applying a Hadamard gate and reading the output state): `shots` dictates the amount of times to simulate the experiment, `get` decides the format in which we want the result of the experiment.
 
+With `get=memory`, `simulate` returns a list containing `shots` strings, each either `"0"` or `"1"`. We join these strings together and turn them into an integer using the `int` function and specifying base 2.
+
 #### Quantum tunnelling
 
 ##### Initial implementation
@@ -647,7 +649,7 @@ qc.h(0)
 qc.measure(0,0)
 
 def randGen():
-    return sum(int(*simulate(qc, shots=1, qc='memory'))<<i for i in range(3))
+    return int(''.join(simulate(qc, shots=3, get='memory')), 2)
 ```
 
 #### Cleaning up unused variables/imports
