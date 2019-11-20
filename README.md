@@ -1,10 +1,10 @@
-# Acid Rain
+# AcidRain
 
-_Avoid the rain because it's acid._ A simple directive meant for a simple game, add to that a quantum twist and you've got **Acid Rain**.
+_Avoid the rain because it's acid._ A simple directive meant for a simple game, add to that a quantum twist and you've got **AcidRain**.
 
 ## Qiskit hackathon
 
-The availability of a **[Pew Pew v10.2](https://pewpew.readthedocs.io/en/latest/pewpew10/overview.html)** sparked the idea for a handheld game written in [MicroPython](https://micropython.org) (a Python implementation for microcontrollers) but with a quantum twist, as per the hackathon's theme.
+The availability of a **[PewPew v10.2](https://pewpew.readthedocs.io/en/latest/pewpew10/overview.html)** sparked the idea for a handheld game written in [MicroPython](https://micropython.org) (a Python implementation for microcontrollers) but with a quantum twist, as per the hackathon's theme.
 
 The PewPew v10.2 is the fruit of [@deshipu](https://github.com/deshipu)'s labour. [Documentation is available here](https://pewpew.readthedocs.io/en/latest/pew.html) and [source code here](https://github.com/pewpew-game/pewpew/blob/master/libs/PewPew10.2/frozen/pewpew10/pew.py).
 
