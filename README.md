@@ -501,6 +501,10 @@ class AcidRain:
         return randGen(), __STARTING_Y
 ```
 
+`qc = QuantumCircuit(1,1)` intialises a quantum circuit with 1 qubit and 1 output bit. `qc.h(0)` adds a Hadamard gate to the single qubit at position 0. The Hadamard gate is what let's us use the value of the qubit to represent a fair coin toss by giving either state (0 or 1) an equal probability. `qc.measure(0,0)` reads out qubit 0 into output bit 0.
+
+The `simulate` function simulates our experiment (currently applying a Hadamard gate and reading the output state): `shots` dictates the amount of times to simulate the experiment, `get` decides the format in which we want the result of the experiment.
+
 #### Quantum tunnelling
 
 ##### Initial implementation
