@@ -8,7 +8,7 @@ The availability of a **[PewPew v10.2](https://pewpew.readthedocs.io/en/latest/p
 
 The PewPew v10.2 is the fruit of [@deshipu](https://github.com/deshipu)'s labour. [Documentation is available here](https://pewpew.readthedocs.io/en/latest/pew.html) and [source code here](https://github.com/pewpew-game/pewpew/blob/master/libs/PewPew10.2/frozen/pewpew10/pew.py).
 
-Thanks to the efforts of [@quantumjim](https://github.com/quantumjim) there exists [MicroQiskit](https://github.com/quantumjim/MicroQiskit), a _"version of Qiskit that could run on microcontrollers"_ and more specifically a MicroPython-compatible version.
+Thanks to the efforts of [@quantumjim](https://github.com/quantumjim) there exists [MicroQiskit](https://github.com/quantumjim/MicroQiskit), a "version of Qiskit that could run on microcontrollers" and more specifically a MicroPython-compatible version.
 
 We now have the essential building blocks for a handheld quantum game, now we only need make it.
 
