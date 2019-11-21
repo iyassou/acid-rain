@@ -71,7 +71,7 @@ __MAX_RAINDROPS = const(20)
 # [...]
 ```
 
-`const` is similar to the `#define` pre-processor in C, which carries out literal replacement of a value wherever the variable is mentioned, saving memory. The double underscores at the beginning of a variable name prevent the variable from being loaded into the global dictionary: we choose to do so because we don't need/want the variable to be accessible at runtime.
+`const` is similar to the `#define` pre-processor directive in C, which carries out literal replacement of a value wherever the variable is mentioned, saving memory. The double underscores at the beginning of a variable name prevent the variable from being loaded into the global dictionary: we choose to do so because we don't need/want the variable to be accessible at runtime.
 
 Both of these are functionally-speaking unnecessary, but good practise when dealing with microcontrollers as they don't have the same memory abundance as everyday computers.
 
