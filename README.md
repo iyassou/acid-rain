@@ -649,7 +649,7 @@ qc.h(0)
 qc.measure(0,0)
 
 def randGen():
-    return int(''.join(simulate(qc, shots=3, get='memory')), 2)
+    return int(''.join(*simulate(qc, shots=3, get='memory')), 2)
 ```
 
 #### Cleaning up unused variables/imports
