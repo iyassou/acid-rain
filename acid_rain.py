@@ -1,205 +1,257 @@
-from micropython import const
+from math import sqrt, exp
 from microqiskit import QuantumCircuit, simulate
 import pew
 
-# Game settings
-__RAINDROP_STARTING_Y = const(0)
-__STARTING_SPEED = const(2)
-__PLAYER_STARTING_X = const(3)
-__RAIN_COLOUR = const(1)
-__PLAYER_COLOUR = const(255)
-__ERASING_COLOUR = const(0)
-__GROUND_Y = const(7)
-__SCREEN_MIN_X = const(0)
-__SCREEN_MAX_X = const(7)
-__GAME_SPEED_FACTOR = 1.012
+pew.init()
+screen = pew.Pix()
+qc = QuantumCircuit(1, 1)
+qc.h(0)
+qc.measure(0, 0)
+def new_raindrop():
+    # _Quantumly_ returns a random number between 0 and 7 (inclusive of both).
+    # The PewPew's screen is an 8x8 grid so the number returned will be the
+    # raindrop's x coordinate.
+    return int(''.join(simulate(qc, shots=3, get='memory')), 2)
+def flip_a_quantum_coin():
+    # _Quantumly_ returns a random number between 0 and 1 (inclusive of both).
+    return int(*simulate(qc, shots=1, get='memory'))
+__REDUCED_PLANCK_CONSTANT = 1.054571817e-34
+def sinh(x):
+    # Hyperbolic sine function.
+    e_x = exp(x)
+    return (e_x*e_x - 1) / (2 * e_x)
 __TITLE_SCREEN = pew.Pix.from_text('AcidRain')
 __GAME_OVER_SCREEN = pew.Pix.from_text('Game Over!')
-__V_0 = const(20)
-# In the case where the player reaches game_speed >= __V_0,
-# we distinguish them by displaying __EASTER_EGG:
-__EASTER_EGG = pew.Pix.from_text("Congratulations! You've won! ^-^")
-class __YouAreSpecial(Exception):
-	pass
+__VICTORY_SCREEN = pew.Pix.from_text("Congratulations! You've won! ^-^")
+class Victory(Exception):
+    pass
 
-# Game mods
-__WRAP_AROUND = True
-__SIMULATING_REAL_PHYSICS = True
+# Game settings
+class GameSetings:
+    def __init__(self,
+            starting_speed=2, player_starting_x=3,
+            rain_colour=1, player_colour=255, erasing_colour=0,
+            game_speed_factor=1.012, energy_barrier=20,
+            wrap_around=True, simulating_real_physics=True,
+            mass=1e-18, barrier_width=1e-9, epsilon=0.0001):
+        self.starting_speed = starting_speed
+        self.player_starting_x = player_starting_x # Player is always on the ground so we only need the x component
+        self.rain_colour = rain_colour
+        self.player_colour = player_colour
+        self.erasing_colour = erasing_colour
+        self.game_speed_factor = game_speed_factor
+        self.energy_barrier = energy_barrier
+        self.wrap_around = wrap_around
+        self.simulating_real_physics = simulating_real_physics
+        self.mass = mass
+        self.barrier_width = barrier_width
+        self.epsilon = epsilon
 
-# Physics
-if __SIMULATING_REAL_PHYSICS:
-	from math import sqrt, exp
-	def cosh(x): return (exp(x) + exp(-x))/2
-	"""
-		Representing the mass of the player by __MASS, and noticing that when
-		E >= __V_0 we end the game, we calculate the wave number K1 by:
-		
-		_K1	= sqrt((2*__MASS*(__V_0 - E)) / h_bar)
-				= sqrt(2*__MASS/h_bar) * sqrt(__V_0 - E)
-				of which we can store the constant part.
-		
-		Since h_bar is pretty small, sqrt(1/h_bar) will be large, so to bring
-		the number into a relatively normal range, we'll choose __MASS and __A,
-		the width of the raindrop, to be relatively smaller.
-	"""
-	__MASS = 1e-18
-	__A = 1e-9
-	__OFFSET = 0.0001
-	__K_1 = sqrt(2*__MASS/1.054571817e-34) # 1.054571817e-34 is the reduced Planck constant
-	"""
-		The probability of transmission through the raindrop when E < __V_0 is
-		given by:
-
-		t = 1 / (1 + (__V_0**2*sinh(_K1*__A)**2) / (4*E*(__V_0 - E)))
-		
-		For reasons that I didn't notice were unnecessary until the point of writing,
-		we make use of:
-
-		sinh(x)**2 = (cosh(2x) - 1)/2
-
-		we change this to:
-
-		t = 1 / (1 + (__V_0**2*(cosh(2*_K1*__A) - 1)) / (8*E*(__V_0 - E)) )
-
-		We'll accept the probability as being convincing if it is larger than 0.5.
-	"""
-
-# MicroQiskit
-qc = QuantumCircuit(1,1)
-qc.h(0)
-qc.measure(0,0)
-def rand():
-	return int(''.join(simulate(qc, shots=3, get='memory')), 2)
-
-# Game variables
-sc = pew.Pix()
-player = __PLAYER_STARTING_X
+# Game logic variables
+player = None
 raindrops_evaded = 0
 raindrops = []
-game_speed = __STARTING_SPEED
+game_speed = None
 
-# Game logic/utility functions
-def reset_game_logic():
-	global player, raindrops_evaded, raindrops, game_speed
-	player = __PLAYER_STARTING_X
-	raindrops_evaded = 0
-	raindrops = []
-	game_speed = __STARTING_SPEED
+# Game functions
+def debounce(game_speed):
+    # When the player (irl) presses any button on the PewPew v10.2, it appropriately
+    # modifies the value returned by pew.keys() to reflect this.
+    #
+    # However the design of the circuitry at play (two metal plates coming into contact)
+    # when subject to the speed of and manner in which the player depresses and releases
+    # the button often registers more than one press, i.e. more than one state transition.
+    # The player operates at a speed much slower than the microcontroller's circuitry for
+    # one, and may also accidentally double-press the button.
+    #
+    # Visually speaking, if we were to graph the electrical signal generated by the button,
+    # there would be multiple transitions, or 'bounces', bunched up together within a
+    # short amount of time.
+    #
+    # To remedy this, we implement some sort of 'debouncing' using either hardware or
+    # software.
+    #
+    # One way to do so using software is to ignore all subsequent presses within a certain
+    # amount of time. We'd need to choose this window wisely, since all player input is
+    # ignored during that time.
+    #
+    # In our case, we could have that window decrease as the game goes faster so that the
+    # player feels less punished at high speeds.
+    if game_speed < 2.2:
+        t = 40 # total delay = 100 / 40 = 2.5 ms
+    elif game_speed < 2.5:
+        t = 50 # total delay = 100 / 50 = 2.0 ms
+    else:
+        t = 75 # total delay = 100 / 75 = 1.3 ms
+    for _ in range(100):
+        pew.tick(1/t)
+        if not pew.keys(): # if there are no key presses, we're done debouncing
+            return
 
-def debounce():
-	if game_speed < 2.2:
-		t = 75
-	elif game_speed < 2.5:
-		t = 50
-	else:
-		t = 40
-	for _ in range(100):
-		pew.tick(1/t)
-		if not pew.keys():
-			return
+def reset_game_logic(player_starting_x, starting_speed):
+    # Resets game logic variables to their starting values.
+    global player, raindrops_evaded, raindrops, game_speed
+    player = player_starting_x
+    raindrops_evaded = 0
+    del raindrops[:] # deletes contents of raindrops; doesn't replace raindrops with new empty list
+    game_speed = starting_speed
 
-def check_and_move_player():
-	k = pew.keys()
-	debounce()
-	if k & pew.K_UP:
-		handle_quantum_tunnelling()
-	else:
-		if k & pew.K_LEFT:
-			dx = -1
-		elif k & pew.K_RIGHT:
-			dx = 1
-		else:
-			return
-		global player
-		if player + dx > __SCREEN_MAX_X:
-			dx = -7 if __WRAP_AROUND else 0
-		if player + dx < __SCREEN_MIN_X:
-			dx = 7 if __WRAP_AROUND else 0
-		sc.pixel(player, __GROUND_Y, color=__ERASING_COLOUR)
-		player += dx
-		sc.pixel(player, __GROUND_Y, color=__PLAYER_COLOUR)
+def clear_screen():
+    # Clears the screen by placing a black box over it.
+    screen.box(0, x=0, y=0, width=8, height=8)
 
-def handle_quantum_tunnelling():
-	global raindrops_evaded
-	if any(r[0] == player and r[1] == __GROUND_Y-1 for r in raindrops):
-		# check if there is a raindrop directly above the raindrop directly
-		# above the player, because quantum tunnelling is only for one raindrop
-		if any(r[0] == player and r[1] == __GROUND_Y-2 for r in raindrops):
-			raise pew.GameOver
+def title_screen():
+    # Displays the title screen in a loop. Breaks if either X or O buttons are pressed.
+    activity = False
+    while True:
+        for dx in range(-8, __TITLE_SCREEN.width):
+            screen.blit(__TITLE_SCREEN, -dx, 1)
+            pew.show(screen)
+            pew.tick(1/12)
+            activity = pew.keys() & (pew.K_O | pew.K_X)
+            if activity:
+                break
+        if activity:
+            break
+    clear_screen()
 
-		if __SIMULATING_REAL_PHYSICS:
-			E = game_speed - __STARTING_SPEED + __OFFSET
-			k_1 = __K_1 * sqrt(__V_0 - E)
-			t = __V_0**2 * (cosh(2 * k_1 * __A) - 1)
-			t /= 8 * E * (__V_0 - E)
-			t += 1
-			if 1/t < 0.5: # survives
-				sc.pixel(player, __GROUND_Y-1, color=__ERASING_COLOUR)
-				raindrops.remove([player, __GROUND_Y-1])
-				raindrops_evaded += 1
-			else: # die
-				raise pew.GameOver
-		else:
-			if int(*simulate(qc, shots=1, get='memory')) < 1: # survives
-				sc.pixel(player, __GROUND_Y-1, color=__ERASING_COLOUR)
-				raindrops.remove([player, __GROUND_Y-1])
-				raindrops_evaded += 1
-			else: # die
-				raise pew.GameOver
+def handle_quantum_tunnelling(simulating_real_physics, mass, energy_barrier,
+                              barrier_width, starting_speed, epsilon,
+                              erasing_colour):
+    # Representing the mass of the player by MASS, and noticing that when E >= ENERGY_BARRIER
+    # we end the game, we compute the wave number K_1:
+    #     K_1	= sqrt((2*MASS*(ENERGY_BARRIER - E)) / __REDUCED_PLANCK_CONSTANT)
+    #
+    # Since __REDUCED_PLANCK_CONSTANT is pretty small, sqrt(1/__REDUCED_PLANCK_CONSTANT) will
+    # be large, so to bring K_1 into a relatively 'normal' range, we'll choose MASS and BARRIER_WIDTH
+    # (the width of the raindrop) to be relatively smaller.
+    #
+    # The probability of transmission through the raindrop when E < ENERGY_BARRIER is given by:
+    #     1 / (1 + (ENERGY_BARRIER**2 * sinh(K_1 * BARRIER_WIDTH)**2) / (4 * E * (ENERGY_BARRIER - E)))
+    # We'll accept the probability as being convincing if it is larger than 0.5.
+    #
+    # We note that this value is undefined for E == 0, which occurs at the very start when:
+    #     E = game_speed - STARTING_SPEED
+    # To prevent raising an error, we redefine E to be:
+    #     E = game_speed - STARTING_SPEED + EPSILON,
+    # for some small positive EPSILON.
+    global raindrops_evaded, raindrops
+    if any(r[0] == player and r[1] == 6 for r in raindrops):
+        # check if there is a raindrop directly above the raindrop directly
+        # above the player, because quantum tunnelling is only for one raindrop
+        if any(r[0] == player and r[1] == 5 for r in raindrops):
+            raise pew.GameOver
+        if simulating_real_physics:
+            E = game_speed - starting_speed + epsilon
+            k_1 = sqrt(2 * mass * (energy_barrier - E) / __REDUCED_PLANCK_CONSTANT)
+            t = 1 / (1 + energy_barrier*energy_barrier * sinh(k_1 * barrier_width)**2 / (4 * E * (energy_barrier - E)))
+            if t < 0.5:
+                screen.pixel(player, 6, color=erasing_colour)
+                raindrops.remove([player, 6])
+                raindrops_evaded += 1
+            else:
+                print('t=', t)
+                raise pew.GameOver
+        else:
+            if flip_a_quantum_coin() < 1:
+                screen.pixel(player, 6, color=erasing_colour)
+                raindrops.remove([player, 6])
+                raindrops_evaded += 1
+            else:
+                raise pew.GameOver
 
-# Actual game
-pew.init() # otherwise sc is None
-while True:
+def handle_player_input(wrap_around, erasing_colour, player_colour,
+                          simulating_real_physics, mass, energy_barrier,
+                          barrier_width, starting_speed, epsilon):
+    # Checks for player input and interprets it as best as it can.
+    global player
+    keys = pew.keys()
+    if keys & pew.K_UP:
+        handle_quantum_tunnelling(
+            simulating_real_physics, mass, energy_barrier, barrier_width,
+            starting_speed, epsilon, erasing_colour
+        )
+    else:
+        if keys & pew.K_LEFT:
+            dx = -1
+        elif keys & pew.K_RIGHT:
+            dx = 1
+        else:
+            return
+        if player + dx > 7:
+            if not wrap_around:
+                return
+            dx = -7
+        if player + dx < 0:
+            if not wrap_around:
+                return
+            dx = 7
+        screen.pixel(player, 7, color=erasing_colour)
+        player += dx
+        screen.pixel(player, 7, color=player_colour)
 
-	game_started = False
-	while True:
-		for dx in range(-8, __TITLE_SCREEN.width):
-			sc.blit(__TITLE_SCREEN, -dx, 1)
-			pew.show(sc)
-			pew.tick(1/12)
-			game_started = pew.keys() & (pew.K_O | pew.K_X)
-			if game_started: break
-		if game_started: break
-	sc.box(0, x=0, y=0, width=8, height=8)
-	sc.pixel(player, __GROUND_Y, color=__PLAYER_COLOUR) # draw the player for the first time
-	try:
-		while True:
-			check_and_move_player()
-			for i in range(len(raindrops)-1, -1, -1):
-				# remove fallen raindrops
-				if raindrops[i][1] == __GROUND_Y:
-					sc.pixel(*raindrops[i], color=__ERASING_COLOUR)
-					del raindrops[i]
-					raindrops_evaded += 1
-					# fairly certain redrawing the player here fixed a visual bug
-					sc.pixel(player, __GROUND_Y, color=__PLAYER_COLOUR)
-				# update raindrops
-				else:
-					sc.pixel(*raindrops[i], color=__ERASING_COLOUR)
-					raindrops[i][1] += 1
-					sc.pixel(*raindrops[i], color=__RAIN_COLOUR)
-				# check for player collision
-				if raindrops[i] == [player, __GROUND_Y]:
-					raise pew.GameOver
-				# generate new raindrop
-			raindrops.append([rand(), __RAINDROP_STARTING_Y-1])
-			if game_speed >= __V_0:
-				raise __YouAreSpecial
-			pew.show(sc)
-			pew.tick(1/game_speed)
-			game_speed *= __GAME_SPEED_FACTOR
-	except (pew.GameOver, __YouAreSpecial) as e:
-		sc.box(0, x=0, y=0, width=8, height=8)
-		score = pew.Pix.from_text('Score: ' + str(raindrops_evaded))
-		p = __GAME_OVER_SCREEN if isinstance(e, pew.GameOver) else __EASTER_EGG
-		for dx in range(-8, p.width):
-			sc.blit(p, -dx, 1)
-			pew.show(sc)
-			pew.tick(1/17)
-		for dx in range(-8, score.width):
-			sc.blit(score, -dx, 1)
-			pew.show(sc)
-			pew.tick(1/13)
-		# Reset game logic
-		reset_game_logic()
-		debounce() # useful
+def __run(gs):
+    # Function that handles one run of the game.
+    global player, raindrops, raindrops_evaded, game_speed
+    title_screen()
+    screen.pixel(player, 7, color=gs.player_colour)
+    try:
+        while True:
+            handle_player_input(
+                gs.wrap_around, gs.erasing_colour, gs.player_colour,
+                gs.simulating_real_physics, gs.mass, gs.energy_barrier,
+                gs.barrier_width, gs.starting_speed, gs.epsilon
+            )
+            for i in range(len(raindrops)-1, -1, -1):
+                # remove fallen raindrops
+                if raindrops[i][1] == 7:
+                    screen.pixel(*raindrops[i], color=gs.erasing_colour)
+                    del raindrops[i]
+                    raindrops_evaded += 1
+                    # fairly certain redrawing the player here fixed a visual bug
+                    screen.pixel(player, 7, color=gs.player_colour)
+                # update raindrops
+                else:
+                    screen.pixel(*raindrops[i], color=gs.erasing_colour)
+                    raindrops[i][1] += 1
+                    screen.pixel(*raindrops[i], color=gs.rain_colour)
+                # check for player collision
+                if raindrops[i][0] == player:
+                    if raindrops[i][1] == 7:
+                        raise pew.GameOver
+                # generate new raindrop
+            raindrops.append([new_raindrop(), -1])
+            if game_speed >= gs.energy_barrier:
+                raise Victory
+            pew.show(screen)
+            pew.tick(1/game_speed)
+            game_speed *= gs.game_speed_factor
+    except (pew.GameOver, Victory) as e:
+        clear_screen()
+        score = pew.Pix.from_text('Score: ' + str(raindrops_evaded))
+        p = __GAME_OVER_SCREEN if isinstance(e, pew.GameOver) else __VICTORY_SCREEN
+        for dx in range(-8, p.width):
+            screen.blit(p, -dx, 1)
+            pew.show(screen)
+            pew.tick(1/17)
+        for dx in range(-8, score.width):
+            screen.blit(score, -dx, 1)
+            pew.show(screen)
+            pew.tick(1/13)
+        debounce(game_speed) # helpful
+        reset_game_logic(gs.player_starting_x, gs.starting_speed)
+
+def play(gs, forever=False):
+    # Function that calls the game on loop. Use this instead of __run.
+    assert isinstance(gs, GameSetings), 'need GameSettings object, not {}'.format(type(gs))
+    global player, game_speed
+    if player is None:
+        player = gs.player_starting_x
+    if game_speed is None:
+        game_speed = gs.starting_speed
+    try:
+        __run(gs)
+        while forever:
+            __run(gs)
+    except KeyboardInterrupt:
+        return
